@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: 192.168.58.2:30500/angular-frontend
+  repository: localhost:30500/angular-frontend
   tag: "1"
   pullPolicy: IfNotPresent
 

@@ -2,7 +2,8 @@ pipeline {
   agent { label 'minikube-docker' }
 
   environment {
-    REGISTRY = '192.168.58.2:30500'
+    PUSH_REGISTRY = '192.168.58.2:30500'
+    CLUSTER_REGISTRY = 'localhost:30500'
     IMAGE_REPOSITORY = 'angular-frontend'
     NAMESPACE = 'devops'
     DEPLOYMENT = 'frontend'
@@ -30,7 +31,8 @@ pipeline {
           def commit = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
           def buildTime = sh(script: "TZ=Asia/Kolkata date '+%Y-%m-%d-%H-%M-%S'", returnStdout: true).trim()
           env.IMAGE_TAG = "${commit}-${buildTime}"
-          env.IMAGE = "${env.REGISTRY}/${env.IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+          env.IMAGE = "${env.PUSH_REGISTRY}/${env.IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+          env.DEPLOY_IMAGE = "${env.CLUSTER_REGISTRY}/${env.IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
           echo "Building image ${env.IMAGE}"
         }
       }
@@ -46,7 +48,7 @@ pipeline {
 
     stage('Deploy to Minikube') {
       steps {
-        sh 'kubectl -n "$NAMESPACE" set image "deployment/$DEPLOYMENT" "$CONTAINER=$IMAGE"'
+        sh 'kubectl -n "$NAMESPACE" set image "deployment/$DEPLOYMENT" "$CONTAINER=$DEPLOY_IMAGE"'
         sh 'kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=180s'
       }
     }
