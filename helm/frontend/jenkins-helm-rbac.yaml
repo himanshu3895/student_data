@@ -1,0 +1,25 @@
+# Apply once with a cluster administrator if the Jenkins agent uses the
+# existing devops/jenkins-deployer service account.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-helm-release-storage
+  namespace: devops
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-helm-release-storage
+  namespace: devops
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer
+    namespace: devops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jenkins-helm-release-storage

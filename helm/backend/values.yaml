@@ -1,0 +1,23 @@
+replicaCount: 1
+
+image:
+  repository: 192.168.58.2:30500/flask-backend
+  tag: "1"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5000
+
+mongoSecret:
+  name: mongo-secret
+  key: MONGO_URI
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+fullnameOverride: backend

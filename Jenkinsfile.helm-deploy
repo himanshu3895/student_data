@@ -1,0 +1,65 @@
+pipeline {
+  agent { label 'minikube-build-helm' }
+
+  environment {
+    REGISTRY = '192.168.58.2:30500'
+    IMAGE_REPOSITORY = 'angular-frontend'
+    RELEASE = 'student-frontend'
+    NAMESPACE = 'devops'
+    CHART = 'helm/frontend'
+  }
+
+  stages {
+    stage('Checkout GitHub') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build Angular') {
+      steps {
+        sh 'node --version'
+        sh 'npm ci'
+        sh 'npm run build'
+      }
+    }
+
+    stage('Create Image Tag') {
+      steps {
+        script {
+          def commit = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+          def buildTime = sh(script: "TZ=Asia/Kolkata date '+%Y-%m-%d-%H-%M-%S'", returnStdout: true).trim()
+          env.IMAGE_TAG = "${commit}-${buildTime}"
+          env.IMAGE = "${env.REGISTRY}/${env.IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+          echo "Building image ${env.IMAGE}"
+        }
+      }
+    }
+
+    stage('Build and Push Image') {
+      steps {
+        sh 'docker info >/dev/null'
+        sh 'docker build --tag "$IMAGE" .'
+        sh 'docker push "$IMAGE"'
+      }
+    }
+
+    stage('Deploy with Helm') {
+      steps {
+        sh 'helm version'
+        sh 'kubectl auth can-i get secrets -n "$NAMESPACE"'
+        sh 'kubectl auth can-i patch deployments -n "$NAMESPACE"'
+        sh 'kubectl auth can-i patch services -n "$NAMESPACE"'
+        sh '''
+          helm upgrade --install "$RELEASE" "$CHART" \\
+            --namespace "$NAMESPACE" \\
+            --take-ownership \\
+            --set-string image.repository="$REGISTRY/$IMAGE_REPOSITORY" \\
+            --set-string image.tag="$IMAGE_TAG" \\
+            --wait --timeout 180s
+        '''
+        sh 'kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout=180s'
+      }
+    }
+  }
+}

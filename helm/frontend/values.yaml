@@ -1,0 +1,20 @@
+replicaCount: 1
+
+image:
+  repository: 192.168.58.2:30500/angular-frontend
+  tag: "1"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+# The existing app-ingress is shared with the backend and is managed separately.
+fullnameOverride: frontend

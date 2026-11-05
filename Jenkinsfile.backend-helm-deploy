@@ -1,0 +1,96 @@
+pipeline {
+  agent { label 'minikube-build-helm' }
+
+  environment {
+    REGISTRY = '192.168.58.2:30500'
+    IMAGE_REPOSITORY = 'flask-backend'
+    RELEASE = 'student-backend'
+    NAMESPACE = 'devops'
+    CHART = 'helm/backend'
+    MONGO_SECRET = 'mongo-secret'
+    BACKEND_BRANCH = 'main'
+    BACKEND_GIT_CREDENTIAL_ID = 'github-repo'
+    PIP_CONF_CREDENTIAL_ID = 'backend-pip-conf'
+    DOCKER_BUILDKIT = '1'
+  }
+
+  stages {
+    stage('Checkout Pipeline and Helm Chart') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Check Build and Cluster Access') {
+      steps {
+        sh 'helm version'
+        sh 'kubectl version --client'
+        sh 'docker info >/dev/null'
+        sh 'kubectl auth can-i get secrets -n "$NAMESPACE"'
+        sh 'kubectl auth can-i patch deployments -n "$NAMESPACE"'
+        sh 'kubectl auth can-i patch services -n "$NAMESPACE"'
+        sh 'kubectl get secret "$MONGO_SECRET" -n "$NAMESPACE"'
+        script {
+          if (!env.BACKEND_REPO_URL?.trim()) {
+            error('Configure BACKEND_REPO_URL in Jenkins with the backend GitHub repository URL.')
+          }
+        }
+      }
+    }
+
+    stage('Checkout Backend GitHub') {
+      steps {
+        script {
+          def remote = [url: env.BACKEND_REPO_URL.trim()]
+          remote.credentialsId = env.BACKEND_GIT_CREDENTIAL_ID
+          dir('backend-src') {
+            checkout([
+              $class: 'GitSCM',
+              branches: [[name: "*/${env.BACKEND_BRANCH}"]],
+              userRemoteConfigs: [remote]
+            ])
+          }
+        }
+      }
+    }
+
+    stage('Create Image Tag') {
+      steps {
+        dir('backend-src') {
+          script {
+            def commit = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+            def buildTime = sh(script: "TZ=Asia/Kolkata date '+%Y-%m-%d-%H-%M-%S'", returnStdout: true).trim()
+            env.IMAGE_TAG = "${commit}-${buildTime}"
+            env.IMAGE = "${env.REGISTRY}/${env.IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
+            echo "Building image ${env.IMAGE}"
+          }
+        }
+      }
+    }
+
+    stage('Build and Push Backend Image') {
+      steps {
+        withCredentials([file(credentialsId: env.PIP_CONF_CREDENTIAL_ID, variable: 'PIP_CONF_FILE')]) {
+          dir('backend-src') {
+            sh 'docker build --secret id=pipconf,src="$PIP_CONF_FILE" --tag "$IMAGE" .'
+            sh 'docker push "$IMAGE"'
+          }
+        }
+      }
+    }
+
+    stage('Deploy with Helm') {
+      steps {
+        sh '''
+          helm upgrade --install "$RELEASE" "$CHART" \\
+            --namespace "$NAMESPACE" \\
+            --take-ownership \\
+            --set-string image.repository="$REGISTRY/$IMAGE_REPOSITORY" \\
+            --set-string image.tag="$IMAGE_TAG" \\
+            --wait --timeout 180s
+        '''
+        sh 'kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=180s'
+      }
+    }
+  }
+}

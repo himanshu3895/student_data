@@ -1,0 +1,6 @@
+apiVersion: v2
+name: student-frontend
+description: Helm chart for the Angular student management frontend
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
